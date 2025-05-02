@@ -8,7 +8,7 @@ It parses command-line arguments and sets up the simulation.
 import argparse
 from typing import Any, Dict
 
-from game_of_life.game_logic import GameOfLife, Patterns
+from game_of_life.game_logic import AgentBasedGameOfLife, GameOfLife, Patterns
 from game_of_life.visualization import Visualizer
 
 
@@ -42,6 +42,24 @@ def parse_arguments() -> Dict[str, Any]:
         "--save", type=str, help="Save the animation to the specified file"
     )
 
+    # Game mode
+    mode_group = parser.add_argument_group("Game Mode")
+    mode_group.add_argument(
+        "--agent-based", 
+        action="store_true",
+        help="Run in agent-based mode with live cells as agents"
+    )
+    mode_group.add_argument(
+        "--random-actions",
+        action="store_true",
+        help="Use random action selection for agents (default)"
+    )
+    mode_group.add_argument(
+        "--show-agents",
+        action="store_true",
+        help="Show agent actions in visualization (arrows and circles)"
+    )
+    
     # Pattern options
     pattern_group = parser.add_argument_group("Patterns")
     pattern_group.add_argument(
@@ -87,9 +105,18 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
         A GameOfLife instance initialized according to the arguments
     """
     grid_size = args["grid_size"]
-
-    # Create game with empty grid
-    game = GameOfLife(grid_size=grid_size, random_init=False)
+    
+    # Determine which game class to use
+    if args["agent_based"]:
+        # Create agent-based game
+        game = AgentBasedGameOfLife(
+            grid_size=grid_size,
+            random_init=False,
+            random_actions=args.get("random_actions", True)
+        )
+    else:
+        # Create standard game
+        game = GameOfLife(grid_size=grid_size, random_init=False)
 
     # Add pattern based on arguments
     if args["glider"]:
@@ -119,21 +146,34 @@ def main() -> None:
     game = setup_game(args)
 
     # Set up the visualizer
-    viz = Visualizer(game, update_interval=args["interval"])
+    viz = Visualizer(
+        game, 
+        update_interval=args["interval"],
+        show_agents=args.get("show_agents", True)
+    )
 
     # Set title
+    title = "Conway's Game of Life"
+    
+    # Add mode to title
+    if args["agent_based"]:
+        title += " (Agent-Based Mode)"
+    
+    # Add pattern to title
     if args["glider"]:
-        viz.set_title("Conway's Game of Life - Glider")
+        title += " - Glider"
     elif args["gosper"]:
-        viz.set_title("Conway's Game of Life - Gosper Glider Gun")
+        title += " - Gosper Glider Gun"
     elif args["blinker"]:
-        viz.set_title("Conway's Game of Life - Blinker")
+        title += " - Blinker"
     elif args["beacon"]:
-        viz.set_title("Conway's Game of Life - Beacon")
+        title += " - Beacon"
     elif args["block"]:
-        viz.set_title("Conway's Game of Life - Block")
+        title += " - Block"
     else:
-        viz.set_title("Conway's Game of Life - Random")
+        title += " - Random"
+    
+    viz.set_title(title)
 
     # Start the animation
     viz.start_animation(save_path=args["save"])

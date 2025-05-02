@@ -5,7 +5,8 @@ This module contains the core functionality for Conway's Game of Life simulation
 It provides functions for creating and updating the game state.
 """
 
-from typing import Tuple
+import random
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.signal import convolve2d
@@ -13,6 +14,29 @@ from scipy.signal import convolve2d
 # Cell states
 ON = 255  # Live cell
 OFF = 0  # Dead cell
+
+# Agent actions
+GROW_N = 0
+GROW_NE = 1
+GROW_E = 2
+GROW_SE = 3
+GROW_S = 4
+GROW_SW = 5
+GROW_W = 6
+GROW_NW = 7
+FORTIFY = 8
+
+# Direction offsets (row, col) for the 8 directions
+DIRECTIONS = [
+    (-1, 0),   # North
+    (-1, 1),   # Northeast
+    (0, 1),    # East
+    (1, 1),    # Southeast
+    (1, 0),    # South
+    (1, -1),   # Southwest
+    (0, -1),   # West
+    (-1, -1),  # Northwest
+]
 
 
 class GameOfLife:
@@ -104,6 +128,208 @@ class GameOfLife:
         h, w = pattern.shape
         # Make sure the pattern fits within the grid using modulo for wrapping
         self.grid[i : i + h, j : j + w] = pattern
+
+
+class AgentBasedGameOfLife(GameOfLife):
+    """
+    Agent-based extension of Conway's Game of Life.
+    
+    In this version, each live cell is an agent that can take actions:
+    - Grow in one of 8 directions
+    - Fortify itself
+    
+    The rules are modified:
+    - If 3+ cells choose to grow into a dead cell, it becomes alive
+    - If a live cell is grown into, it increases its effective neighbor count by 1
+    - Fortifying makes a cell survive with one more or one less neighbor
+    """
+    
+    def __init__(
+        self,
+        grid_size: int = 100,
+        random_init: bool = True,
+        random_fill_ratio: float = 0.2,
+        random_actions: bool = True
+    ):
+        """
+        Initialize an Agent-based Game of Life simulation.
+        
+        Args:
+            grid_size: The size of the grid (N x N)
+            random_init: Whether to initialize the grid with random values
+            random_fill_ratio: The ratio of live cells to all cells for random initialization
+            random_actions: Whether agents take random actions or use a strategy
+        """
+        super().__init__(grid_size, random_init, random_fill_ratio)
+        
+        # Track which cells are fortified
+        self.fortified = np.zeros((grid_size, grid_size), dtype=bool)
+        
+        # Track agent actions
+        self.actions = np.zeros((grid_size, grid_size), dtype=np.int8)
+        
+        # Whether agents take random actions
+        self.random_actions = random_actions
+    
+    def _get_wrapped_coords(self, row: int, col: int) -> Tuple[int, int]:
+        """
+        Get the wrapped coordinates for a given position.
+        
+        Args:
+            row: The row coordinate
+            col: The column coordinate
+            
+        Returns:
+            The wrapped (row, col) coordinates
+        """
+        return row % self.grid_size, col % self.grid_size
+    
+    def _choose_agent_action(self, row: int, col: int) -> int:
+        """
+        Choose an action for the agent at the specified position.
+        
+        Args:
+            row: The row coordinate of the agent
+            col: The column coordinate of the agent
+            
+        Returns:
+            The action index (0-8)
+        """
+        if self.random_actions:
+            # Randomly choose an action
+            return random.randint(0, 8)
+        else:
+            # This is a placeholder for more sophisticated action selection
+            # For now, just use random actions
+            return random.randint(0, 8)
+    
+    def _assign_agent_actions(self) -> None:
+        """
+        Assign actions to all live cells (agents).
+        """
+        # Reset actions
+        self.actions.fill(0)
+        
+        # Find all live cells
+        live_cells = np.argwhere(self.grid == ON)
+        
+        # Assign actions to each live cell
+        for row, col in live_cells:
+            self.actions[row, col] = self._choose_agent_action(row, col)
+    
+    def update(self) -> None:
+        """
+        Update the grid according to the agent-based rules.
+        """
+        # Assign actions to all agents (live cells)
+        self._assign_agent_actions()
+        
+        # Create binary grid (1 for ON, 0 for OFF)
+        binary_grid = (self.grid == ON).astype(int)
+        
+        # Count natural neighbors using convolution
+        kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
+        neighbor_count = convolve2d(binary_grid, kernel, mode="same", boundary="wrap")
+        
+        # Track cells that are grown into
+        grown_into = np.zeros_like(self.grid, dtype=np.int8)
+        
+        # Process growth actions
+        for row, col in np.argwhere(self.grid == ON):
+            action = self.actions[row, col]
+            
+            # Skip fortify actions
+            if action == FORTIFY:
+                continue
+                
+            # Get the direction to grow
+            dr, dc = DIRECTIONS[action]
+            
+            # Get the target cell (with wrapping)
+            target_row, target_col = self._get_wrapped_coords(row + dr, col + dc)
+            
+            # Increment the grown_into counter for the target cell
+            grown_into[target_row, target_col] += 1
+        
+        # Create a new grid
+        new_grid = self.grid.copy()
+        
+        # Track new fortified cells
+        new_fortified = self.fortified.copy()
+        
+        # Update fortified status
+        for row, col in np.argwhere(self.grid == ON):
+            if self.actions[row, col] == FORTIFY:
+                new_fortified[row, col] = True
+            else:
+                # If not fortifying now, lose fortified status
+                new_fortified[row, col] = False
+        
+        # Apply rules for live cells
+        for row, col in np.argwhere(self.grid == ON):
+            # Calculate effective neighbor count
+            effective_neighbors = neighbor_count[row, col] + grown_into[row, col]
+            
+            # Check if the cell survives
+            survives = False
+            
+            if self.fortified[row, col]:
+                # Fortified cells survive with 1-4 neighbors (instead of 2-3)
+                survives = 1 <= effective_neighbors <= 4
+            else:
+                # Normal cells survive with 2-3 neighbors
+                survives = 2 <= effective_neighbors <= 3
+                
+            # Update the cell state
+            if not survives:
+                new_grid[row, col] = OFF
+        
+        # Apply rules for dead cells
+        for row, col in np.argwhere(self.grid == OFF):
+            # Check if enough cells are growing into this cell
+            if grown_into[row, col] >= 3:
+                new_grid[row, col] = ON
+        
+        # Update grid and fortified status
+        self.grid = new_grid
+        self.fortified = new_fortified
+    
+    def get_agent_action(self, row: int, col: int) -> Optional[int]:
+        """
+        Get the action of the agent at the specified position.
+        
+        Args:
+            row: The row coordinate
+            col: The column coordinate
+            
+        Returns:
+            The action index (0-8) or None if no agent at the position
+        """
+        if self.grid[row, col] == ON:
+            return self.actions[row, col]
+        return None
+    
+    def is_fortified(self, row: int, col: int) -> bool:
+        """
+        Check if the cell at the specified position is fortified.
+        
+        Args:
+            row: The row coordinate
+            col: The column coordinate
+            
+        Returns:
+            True if the cell is fortified, False otherwise
+        """
+        return self.fortified[row, col]
+    
+    def set_action_selection_mode(self, random_actions: bool) -> None:
+        """
+        Set the action selection mode.
+        
+        Args:
+            random_actions: True for random actions, False for strategy-based
+        """
+        self.random_actions = random_actions
 
 
 class Patterns:
