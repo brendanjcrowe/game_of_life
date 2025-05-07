@@ -9,7 +9,7 @@ A modular, efficient implementation of Conway's Game of Life in Python, using ma
 - Includes several pre-defined patterns (glider, blinker, block, beacon, Gosper glider gun)
 - Customizable grid size, animation speed, and initial state
 - Support for saving animations
-- **NEW:** Agent-based mode where each live cell is an intelligent agent
+- **NEW:** Evolutionary game theory dynamics with competing agent policies
 
 ## Installation
 
@@ -50,8 +50,9 @@ The classic Conway's Game of Life with the standard rules:
 In this mode, each live cell is an intelligent agent that can take actions:
 
 - `--agent-based`: Enable agent-based mode
-- `--random-actions`: Use random action selection for agents (default)
+- `--use-policies`: Use policy-based behavior with evolutionary dynamics (default)
 - `--show-agents`: Show agent actions in visualization (arrows and circles)
+- `--show-policy-colors`: Show different colors for different policy types
 
 ##### Agent Actions
 Each live cell can take one of 9 possible actions:
@@ -64,6 +65,34 @@ Each live cell can take one of 9 possible actions:
 3. The "fortify" action makes a cell more protected:
    - It can survive with one more neighbor than usual (4 instead of 3)
    - It can survive with one less neighbor than usual (1 instead of 2)
+
+#### Evolutionary Game Theory
+
+This mode introduces competing agent policies that evolve over time:
+
+- `--use-policies`: Enable evolutionary dynamics with different agent policies
+- `--random-growth-ratio R`: Set the relative ratio of Random Growth policy (default: 1.0)
+- `--always-fortify-ratio R`: Set the relative ratio of Always Fortify policy (default: 1.0)
+- `--adaptive-ratio R`: Set the relative ratio of Adaptive policy (default: 1.0)
+
+##### Agent Policies
+
+1. **Random Growth (Red)**:
+   - Randomly grow into a neighboring unoccupied space
+   - If no unoccupied spaces, then fortify
+
+2. **Always Fortify (Blue)**:
+   - Always fortify regardless of surroundings
+
+3. **Adaptive (Green)**:
+   - If the agent has 2 or 3 neighbors, fortify for stability
+   - Otherwise, grow into a random unoccupied space
+
+##### Evolution Mechanism
+
+When new cells are born, they inherit a policy from their parent cells:
+- The probability of inheriting a particular policy is proportional to the representation of that policy among neighboring parent cells
+- This creates an evolutionary dynamic where more successful policies gradually become more common
 
 ### Pattern Options
 
@@ -96,16 +125,22 @@ Run in agent-based mode with visualization:
 python -m game_of_life.main --agent-based --show-agents
 ```
 
-Run a glider in agent-based mode:
+Run with evolutionary dynamics and policy visualization:
 ```bash
-python -m game_of_life.main --agent-based --glider --show-agents
+python -m game_of_life.main --agent-based --use-policies --show-policy-colors
+```
+
+Run with more Always Fortify policies initially:
+```bash
+python -m game_of_life.main --agent-based --use-policies --always-fortify-ratio 3.0
 ```
 
 ## Architecture
 
-The code is organized into three main modules:
+The code is organized into four main modules:
 
 - `game_logic.py`: Contains the core game logic, including the `GameOfLife` and `AgentBasedGameOfLife` classes and the `Patterns` class
+- `policies.py`: Defines the agent policies and evolutionary dynamics
 - `visualization.py`: Handles visualization and animation of the game state
 - `main.py`: Serves as the entry point, parsing command-line arguments and setting up the simulation
 
@@ -115,7 +150,7 @@ To add new patterns, simply add new static methods to the `Patterns` class in `g
 
 To customize the visualization, modify the `Visualizer` class in `visualization.py`.
 
-To implement more sophisticated agent behaviors, modify the `_choose_agent_action` method in the `AgentBasedGameOfLife` class.
+To implement more sophisticated agent behaviors, add new policy classes to the `policies.py` file.
 
 ## Requirements
 

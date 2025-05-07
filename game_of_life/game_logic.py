@@ -11,32 +11,13 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from scipy.signal import convolve2d
 
-# Cell states
-ON = 255  # Live cell
-OFF = 0  # Dead cell
-
-# Agent actions
-GROW_N = 0
-GROW_NE = 1
-GROW_E = 2
-GROW_SE = 3
-GROW_S = 4
-GROW_SW = 5
-GROW_W = 6
-GROW_NW = 7
-FORTIFY = 8
-
-# Direction offsets (row, col) for the 8 directions
-DIRECTIONS = [
-    (-1, 0),   # North
-    (-1, 1),   # Northeast
-    (0, 1),    # East
-    (1, 1),    # Southeast
-    (1, 0),    # South
-    (1, -1),   # Southwest
-    (0, -1),   # West
-    (-1, -1),  # Northwest
-]
+from game_of_life.constants import DIRECTIONS, FORTIFY, ON, OFF
+from game_of_life.policies import (
+    POLICIES,
+    get_policy_by_id,
+    get_random_policy,
+    inherit_policy_from_neighbors,
+)
 
 
 class GameOfLife:
@@ -142,6 +123,9 @@ class AgentBasedGameOfLife(GameOfLife):
     - If 3+ cells choose to grow into a dead cell, it becomes alive
     - If a live cell is grown into, it increases its effective neighbor count by 1
     - Fortifying makes a cell survive with one more or one less neighbor
+    
+    With evolutionary dynamics, agents can follow different policies, and 
+    new agents inherit policies from their neighbors.
     """
     
     def __init__(
@@ -149,7 +133,8 @@ class AgentBasedGameOfLife(GameOfLife):
         grid_size: int = 100,
         random_init: bool = True,
         random_fill_ratio: float = 0.2,
-        random_actions: bool = True
+        use_policies: bool = True,
+        policy_counts: Optional[Dict[int, int]] = None
     ):
         """
         Initialize an Agent-based Game of Life simulation.
@@ -158,7 +143,8 @@ class AgentBasedGameOfLife(GameOfLife):
             grid_size: The size of the grid (N x N)
             random_init: Whether to initialize the grid with random values
             random_fill_ratio: The ratio of live cells to all cells for random initialization
-            random_actions: Whether agents take random actions or use a strategy
+            use_policies: Whether to use the policy-based behavior
+            policy_counts: Initial distribution of policies (if None, equal distribution)
         """
         super().__init__(grid_size, random_init, random_fill_ratio)
         
@@ -168,8 +154,43 @@ class AgentBasedGameOfLife(GameOfLife):
         # Track agent actions
         self.actions = np.zeros((grid_size, grid_size), dtype=np.int8)
         
-        # Whether agents take random actions
-        self.random_actions = random_actions
+        # For evolutionary game theory
+        self.use_policies = use_policies
+        self.policy_grid = np.zeros((grid_size, grid_size), dtype=np.int8)
+        
+        # Track stats about policies
+        self.policy_counts = {policy_id: 0 for policy_id in POLICIES}
+        
+        # If we're using random initialization, assign policies
+        if random_init and use_policies:
+            self._init_policies(policy_counts)
+    
+    def _init_policies(self, policy_counts: Optional[Dict[int, int]] = None) -> None:
+        """
+        Initialize policies for all live cells.
+        
+        Args:
+            policy_counts: Initial distribution of policies (if None, equal distribution)
+        """
+        # Reset policy counts
+        self.policy_counts = {policy_id: 0 for policy_id in POLICIES}
+        
+        # Find all live cells
+        live_cells = np.argwhere(self.grid == ON)
+        
+        # If specific counts are provided, use them to determine distribution
+        if policy_counts:
+            total = sum(policy_counts.values())
+            policy_probs = [policy_counts.get(i, 0) / total for i in range(len(POLICIES))]
+        else:
+            # Use equal distribution if no counts provided
+            policy_probs = [1 / len(POLICIES)] * len(POLICIES)
+        
+        # Assign policies based on distribution
+        for row, col in live_cells:
+            policy_id = np.random.choice(list(POLICIES.keys()), p=policy_probs)
+            self.policy_grid[row, col] = policy_id
+            self.policy_counts[policy_id] += 1
     
     def _get_wrapped_coords(self, row: int, col: int) -> Tuple[int, int]:
         """
@@ -186,7 +207,7 @@ class AgentBasedGameOfLife(GameOfLife):
     
     def _choose_agent_action(self, row: int, col: int) -> int:
         """
-        Choose an action for the agent at the specified position.
+        Choose an action for the agent at the specified position based on its policy.
         
         Args:
             row: The row coordinate of the agent
@@ -195,12 +216,15 @@ class AgentBasedGameOfLife(GameOfLife):
         Returns:
             The action index (0-8)
         """
-        if self.random_actions:
-            # Randomly choose an action
-            return random.randint(0, 8)
+        if self.use_policies:
+            # Get the agent's policy
+            policy_id = self.policy_grid[row, col]
+            policy = get_policy_by_id(policy_id)
+            
+            # Let the policy choose the action
+            return policy.choose_action(row, col, self.grid, self.grid_size)
         else:
-            # This is a placeholder for more sophisticated action selection
-            # For now, just use random actions
+            # If not using policies, just use random actions
             return random.randint(0, 8)
     
     def _assign_agent_actions(self) -> None:
@@ -257,6 +281,9 @@ class AgentBasedGameOfLife(GameOfLife):
         # Track new fortified cells
         new_fortified = self.fortified.copy()
         
+        # For evolutionary dynamics, track new cells to assign policies
+        new_cells = []
+        
         # Update fortified status
         for row, col in np.argwhere(self.grid == ON):
             if self.actions[row, col] == FORTIFY:
@@ -283,16 +310,37 @@ class AgentBasedGameOfLife(GameOfLife):
             # Update the cell state
             if not survives:
                 new_grid[row, col] = OFF
+                
+                # If using policies, decrement the count for this policy
+                if self.use_policies:
+                    policy_id = self.policy_grid[row, col]
+                    self.policy_counts[policy_id] -= 1
         
         # Apply rules for dead cells
         for row, col in np.argwhere(self.grid == OFF):
             # Check if enough cells are growing into this cell
-            if grown_into[row, col] >= 3:
+            if grown_into[row, col] + neighbor_count[row, col] == 3:
                 new_grid[row, col] = ON
+                
+                # Mark for policy assignment
+                if self.use_policies:
+                    new_cells.append((row, col))
         
         # Update grid and fortified status
         self.grid = new_grid
         self.fortified = new_fortified
+        
+        # Assign policies to new cells
+        if self.use_policies:
+            for row, col in new_cells:
+                # Inherit policy from neighbors
+                policy_id = inherit_policy_from_neighbors(
+                    row, col, self.grid, self.policy_grid, self.grid_size
+                )
+                
+                # Assign the policy and update counts
+                self.policy_grid[row, col] = policy_id
+                self.policy_counts[policy_id] += 1
     
     def get_agent_action(self, row: int, col: int) -> Optional[int]:
         """
@@ -322,14 +370,42 @@ class AgentBasedGameOfLife(GameOfLife):
         """
         return self.fortified[row, col]
     
-    def set_action_selection_mode(self, random_actions: bool) -> None:
+    def get_policy_id(self, row: int, col: int) -> Optional[int]:
         """
-        Set the action selection mode.
+        Get the policy ID of the agent at the specified position.
         
         Args:
-            random_actions: True for random actions, False for strategy-based
+            row: The row coordinate
+            col: The column coordinate
+            
+        Returns:
+            The policy ID or None if no agent or not using policies
         """
-        self.random_actions = random_actions
+        if not self.use_policies or self.grid[row, col] != ON:
+            return None
+        return self.policy_grid[row, col]
+    
+    def get_policy_counts(self) -> Dict[int, int]:
+        """
+        Get the current counts of each policy type.
+        
+        Returns:
+            Dictionary with policy IDs as keys and counts as values
+        """
+        return self.policy_counts.copy()
+    
+    def set_use_policies(self, use_policies: bool) -> None:
+        """
+        Set whether to use policies.
+        
+        Args:
+            use_policies: Whether to use policies
+        """
+        # If turning on policies and they weren't being used before
+        if use_policies and not self.use_policies:
+            self._init_policies()
+            
+        self.use_policies = use_policies
 
 
 class Patterns:

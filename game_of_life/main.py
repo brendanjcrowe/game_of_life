@@ -9,6 +9,7 @@ import argparse
 from typing import Any, Dict
 
 from game_of_life.game_logic import AgentBasedGameOfLife, GameOfLife, Patterns
+from game_of_life.policies import POLICIES
 from game_of_life.visualization import Visualizer
 
 
@@ -50,15 +51,48 @@ def parse_arguments() -> Dict[str, Any]:
         help="Run in agent-based mode with live cells as agents"
     )
     mode_group.add_argument(
-        "--random-actions",
+        "--use-policies",
         action="store_true",
-        help="Use random action selection for agents (default)"
+        default=True,
+        help="Use policy-based behavior with evolutionary dynamics (default)"
+    )
+    mode_group.add_argument(
+        "--no-policies",
+        action="store_true",
+        help="Disable policy-based behavior"
     )
     mode_group.add_argument(
         "--show-agents",
         action="store_true",
+        default=True,
         help="Show agent actions in visualization (arrows and circles)"
     )
+    mode_group.add_argument(
+        "--hide-agents",
+        action="store_true",
+        help="Hide agent action visualization"
+    )
+    mode_group.add_argument(
+        "--show-policy-colors",
+        action="store_true",
+        default=True,
+        help="Show different colors for different policy types"
+    )
+    mode_group.add_argument(
+        "--hide-policy-colors",
+        action="store_true",
+        help="Hide policy color visualization"
+    )
+    
+    # Policy distribution
+    policy_group = parser.add_argument_group("Policy Distribution")
+    for policy_id, policy in POLICIES.items():
+        policy_group.add_argument(
+            f"--{policy.name.lower().replace(' ', '-')}-ratio",
+            type=float,
+            default=1.0,
+            help=f"Relative ratio of {policy.name} policy (default: 1.0)"
+        )
     
     # Pattern options
     pattern_group = parser.add_argument_group("Patterns")
@@ -91,7 +125,36 @@ def parse_arguments() -> Dict[str, Any]:
 
     # Parse arguments
     args = parser.parse_args()
+    
+    # Handle opposite flags
+    if args.no_policies:
+        args.use_policies = False
+    if args.hide_agents:
+        args.show_agents = False
+    if args.hide_policy_colors:
+        args.show_policy_colors = False
+        
     return vars(args)
+
+
+def get_policy_counts(args: Dict[str, Any]) -> Dict[int, int]:
+    """
+    Get policy counts from command-line arguments.
+    
+    Args:
+        args: Command-line arguments
+        
+    Returns:
+        Dictionary with policy IDs as keys and counts as values
+    """
+    policy_counts = {}
+    
+    for policy_id, policy in POLICIES.items():
+        arg_name = f"{policy.name.lower().replace(' ', '-')}_ratio"
+        if arg_name in args:
+            policy_counts[policy_id] = args[arg_name]
+    
+    return policy_counts
 
 
 def setup_game(args: Dict[str, Any]) -> GameOfLife:
@@ -106,13 +169,17 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
     """
     grid_size = args["grid_size"]
     
+    # Get policy counts for evolutionary dynamics
+    policy_counts = get_policy_counts(args)
+    
     # Determine which game class to use
     if args["agent_based"]:
         # Create agent-based game
         game = AgentBasedGameOfLife(
             grid_size=grid_size,
             random_init=False,
-            random_actions=args.get("random_actions", True)
+            use_policies=args["use_policies"],
+            policy_counts=policy_counts
         )
     else:
         # Create standard game
@@ -145,11 +212,12 @@ def main() -> None:
     # Set up the game
     game = setup_game(args)
 
-    # Set up the visualizer
+    # Set up the visualizer with explicit arguments
     viz = Visualizer(
         game, 
         update_interval=args["interval"],
-        show_agents=args.get("show_agents", True)
+        show_agents=args["show_agents"],
+        show_policy_colors=args["show_policy_colors"]
     )
 
     # Set title
@@ -158,6 +226,8 @@ def main() -> None:
     # Add mode to title
     if args["agent_based"]:
         title += " (Agent-Based Mode)"
+        if args["use_policies"]:
+            title += " with Evolutionary Dynamics"
     
     # Add pattern to title
     if args["glider"]:
