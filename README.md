@@ -18,9 +18,14 @@ This is a simple extension of Conway's Game of Life to include evolutionary game
 
 ## Usage
 
-Run the simulation with default settings:
+Run the simulation with default settings (Default Conway's Game of Life):
 ```bash
 python -m game_of_life.main
+```
+
+Reccomneded Run Configurations:
+```bash
+python -m game_of_life   --grid-size 25   --agent-based   --use-policies   --random   --fill-ratio 0.2  --max-steps 50   --save "animation.gif"   --track-population   --plot-file "population_plot.png"   --interval 100
 ```
 
 ### Command-line Arguments

@@ -290,7 +290,7 @@ class Visualizer:
         if save_path:
             try:
                 # Try to use ffmpeg first with specific extra args
-                writer = animation.FFMpegWriter(fps=30, bitrate=1800)
+                writer = animation.FFMpegWriter(fps=16, bitrate=1800)
                 self.animation.save(save_path, writer=writer)
             except Exception as e:
                 print(f"FFmpeg writer failed: {e}")

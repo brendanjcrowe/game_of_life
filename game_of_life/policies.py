@@ -156,7 +156,7 @@ class RandomGrowPolicy(Policy):
     
     @property
     def name(self) -> str:
-        return "Random Growth"
+        return "RandomGrowth"
     
     @property
     def color(self) -> str:
@@ -180,7 +180,7 @@ class AlwaysFortifyPolicy(Policy):
     
     @property
     def name(self) -> str:
-        return "Always Fortify"
+        return "AlwaysFortify"
     
     @property
     def color(self) -> str:
@@ -270,7 +270,8 @@ def inherit_policy_from_neighbors(
     col: int, 
     grid: np.ndarray, 
     policy_grid: np.ndarray,
-    grid_size: int
+    grid_size: int,
+    policy_counts_total = None
 ) -> int:
     """
     Inherit a policy from neighbors proportional to their representation.
@@ -302,13 +303,14 @@ def inherit_policy_from_neighbors(
                     policy_counts[neighbor_policy] = 0
                 policy_counts[neighbor_policy] += 1
     
-    # If no living neighbors with valid policies, choose random policy from active IDs
-    # We need a default list of valid policy IDs (1, 2, 3)
     valid_policy_ids = [1, 2, 3]  # Assuming these are the valid policy IDs
     
     total_neighbors = sum(policy_counts.values())
     if total_neighbors == 0:
-        return random.choice(valid_policy_ids)
+        pol = [pid for pid in valid_policy_ids]
+        p = np.array([policy_counts_total[pid] for pid in valid_policy_ids]).astype(float)
+        p /= p.sum()
+        return np.random.choice(pol, p=p)
     
     # Choose policy proportional to neighbor policies
     policies = list(policy_counts.keys())

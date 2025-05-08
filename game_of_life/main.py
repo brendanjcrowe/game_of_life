@@ -160,9 +160,9 @@ def parse_arguments() -> Dict[str, Any]:
     return vars(args)
 
 
-def get_policy_counts(args: Dict[str, Any]) -> Dict[int, int]:
+def get_policy_weights(args: Dict[str, Any]) -> Dict[int, float]:
     """
-    Get policy counts from command-line arguments.
+    Get policy weights from command-line arguments.
     
     Args:
         args: Command-line arguments
@@ -170,7 +170,7 @@ def get_policy_counts(args: Dict[str, Any]) -> Dict[int, int]:
     Returns:
         Dictionary with policy IDs as keys and counts as values
     """
-    policy_counts = {}
+    policy_weights = {}
     
     # Check if any policy weights were explicitly provided
     any_weights_provided = False
@@ -179,16 +179,22 @@ def get_policy_counts(args: Dict[str, Any]) -> Dict[int, int]:
         if policy_id != 0:
             arg_name = f"{policy.name.lower().replace(' ', '-')}_ratio"
             if arg_name in args and args[arg_name] is not None:
-                policy_counts[policy_id] = args[arg_name]
+                policy_weights[policy_id] = args[arg_name]
                 any_weights_provided = True
+            else:
+                policy_weights[policy_id] = 0
     
     # If no weights were provided, create equal counts
     if not any_weights_provided:
-        for policy_id in POLICIES:
-            policy_counts[policy_id] = 1.0  # Equal weight
-    
-    print(f"Policy counts from arguments: {policy_counts}")
-    return policy_counts
+        for policy_id in [1, 2, 3]:
+            policy_weights[policy_id] = 1 / 3 # Equal weight
+    else:
+        total_weight = sum(policy_weights.values())
+        for policy_id in [1, 2, 3]:
+            policy_weights[policy_id] /= total_weight
+    print(policy_weights)
+    print(f"Policy weights from arguments: {policy_weights}")
+    return policy_weights
 
 
 def setup_game(args: Dict[str, Any]) -> GameOfLife:
@@ -205,7 +211,7 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
     max_steps = args["max_steps"]
     
     # Get policy counts for evolutionary dynamics
-    policy_counts = get_policy_counts(args)
+    policy_weights = get_policy_weights(args)
     
     # Determine which game class to use
     if args["agent_based"]:
@@ -214,7 +220,7 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
             grid_size=grid_size,
             random_init=True,
             use_policies=args["use_policies"],
-            # policy_counts=policy_counts,
+            policy_weights=policy_weights,
             random_fill_ratio=args["fill_ratio"],
             max_steps=max_steps,
         )

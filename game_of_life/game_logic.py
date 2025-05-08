@@ -56,7 +56,6 @@ class GameOfLife:
         if random_init:
             self._random_init(random_fill_ratio)
 
-        # For population tracking
         self.track_population = False
         self.population_history = []
         self.step_count = 0
@@ -81,7 +80,6 @@ class GameOfLife:
         self.population_history = []
         self.step_count = 0
         
-        # Record initial population
         self._record_population()
 
     def _record_population(self) -> None:
@@ -91,16 +89,14 @@ class GameOfLife:
         if not self.track_population:
             return
             
-        # Total population
         total_population = np.sum(self.grid > 0)
         
-        # Create population record
         population_data = {
             'step': self.step_count,
             'total': total_population
         }
         
-        # Add policy-specific data if using policies
+
         if self.use_policies:
             # Verify counts match actual grid
             # if self.step_count % 10 == 0:  # Check every 10 steps to save performance
@@ -269,7 +265,7 @@ class AgentBasedGameOfLife(GameOfLife):
         random_init: bool = True,
         random_fill_ratio: float = 0.2,
         use_policies: bool = True,
-        policy_counts: Optional[Dict[int, int]] = None,
+        policy_weights: Optional[Dict[int, float]] = None,
         max_steps: Optional[int] = None,
         which_policies: List[str] = None,
     ):
@@ -308,11 +304,11 @@ class AgentBasedGameOfLife(GameOfLife):
         print(f"Active policies: {[POLICIES[pid].name for pid in valid_policy_ids]}")
         
         # Track stats about policies - initialize with zeros
-        self.policy_counts = {policy_id: 0 for policy_id in valid_policy_ids}
+        self.policy_weights = policy_weights
         
         # If we're using random initialization, assign policies
         if random_init and use_policies:
-            self._init_policies(policy_counts)
+            self._init_policies(policy_weights)
             self._record_population()
     
     def _get_policy_weights(self, policy_counts: Optional[Dict[int, int]] = None) -> Dict[int, float]:
@@ -353,7 +349,7 @@ class AgentBasedGameOfLife(GameOfLife):
         
         return weights
 
-    def _init_policies(self, policy_counts: Optional[Dict[int, int]] = None) -> None:
+    def _init_policies(self, policy_weights: Optional[Dict[int, int]] = None) -> None:
         """
         Initialize policy-related data structures.
         
@@ -377,7 +373,7 @@ class AgentBasedGameOfLife(GameOfLife):
         # Assign policies randomly to all live cells
         for row, col in live_cells:
             # Choose a random policy (equal chance for each)
-            policy_id = np.random.choice(policy_ids)
+            policy_id = np.random.choice(policy_ids, p=[self.policy_weights[pid] for pid in policy_ids])
             
             # Assign the policy
             self.policy_grid[row, col] = policy_id
@@ -658,11 +654,12 @@ class AgentBasedGameOfLife(GameOfLife):
                 # If using policies, decrement the count for this policy
                 if self.use_policies:
                     policy_id = self.policy_grid[row, col]
-                    if policy_id in self.policy_counts and self.policy_counts[policy_id] > 0:
-                        self.policy_counts[policy_id] -= 1
-                        new_policy_grid[row, col] = 0
-                    else:
-                        pass
+                    #if policy_id in self.policy_counts and self.policy_counts[policy_id] > 0:
+                    # if policy_id in self.policy_counts:
+                    #     self.policy_counts[policy_id] -= 1
+                    new_policy_grid[row, col] = 0
+                    #else:
+                        # pass
         
         # Apply rules for dead cells
         for row, col in np.argwhere(self.grid == OFF):
@@ -686,15 +683,16 @@ class AgentBasedGameOfLife(GameOfLife):
                 
                 # Inherit policy from neighbors
                 policy_id = inherit_policy_from_neighbors(
-                    1, 1, neighbors, neighbors_policy, 3
+                    1, 1, neighbors, neighbors_policy, 3, self.policy_counts
                 )
                 
                 # Assign the policy and update counts
                 # self.policy_grid[row, col] = policy_id
                 new_policy_grid[row, col] = policy_id
-                self.policy_counts[policy_id] += 1
+                # self.policy_counts[policy_id] += 1
         
         self.policy_grid = new_policy_grid
+        self.policy_counts = {pid: np.ones_like(self.policy_grid)[self.policy_grid == pid].sum() for pid in self.active_policies.keys()}
         # Increment step counter and record population if tracking is enabled
         if self.track_population:
             self.step_count += 1
