@@ -228,9 +228,16 @@ class AdaptivePolicy(Policy):
 
 # Dictionary of all policies for easy access
 POLICIES = {
-    0: RandomGrowPolicy(),
-    1: AlwaysFortifyPolicy(),
-    2: AdaptivePolicy()
+    0: None,
+    1: RandomGrowPolicy(),
+    2: AlwaysFortifyPolicy(),
+    3: AdaptivePolicy()
+}
+
+POLICY_NAMES = {
+    "random-growth": 1,
+    "always-fortify": 2,
+    "adaptive": 3
 }
 
 
@@ -269,32 +276,39 @@ def inherit_policy_from_neighbors(
     Inherit a policy from neighbors proportional to their representation.
     
     Args:
-        row: Row position of the new agent
-        col: Column position of the new agent
-        grid: The current game grid
-        policy_grid: Grid containing policy IDs for each cell
-        grid_size: Size of the grid
+        row: Row position within neighborhood (typically 1 for center)
+        col: Column position within neighborhood (typically 1 for center)
+        grid: 3x3 neighborhood grid
+        policy_grid: 3x3 neighborhood policy grid
+        grid_size: Size of the neighborhood (typically 3)
         
     Returns:
         The policy ID to assign to the new agent
     """
     # Count occurrences of each policy among neighboring cells
-    policy_counts = {i: 0 for i in POLICIES.keys()}
+    # Only count policies with ID > 0 (not the None policy)
+    policy_counts = {}
     
     for dr, dc in DIRECTIONS:
-        # Calculate neighbor position with wrapping
+        # Calculate neighbor position within the 3x3 neighborhood
         neighbor_row = (row + dr) % grid_size
         neighbor_col = (col + dc) % grid_size
         
-        # If neighbor is alive, count its policy
+        # If neighbor is alive and has a valid policy, count it
         if grid[neighbor_row, neighbor_col] > 0:
             neighbor_policy = policy_grid[neighbor_row, neighbor_col]
-            policy_counts[neighbor_policy] += 1
+            if neighbor_policy > 0:  # Skip the None policy (0)
+                if neighbor_policy not in policy_counts:
+                    policy_counts[neighbor_policy] = 0
+                policy_counts[neighbor_policy] += 1
     
-    # If no living neighbors, choose random policy
+    # If no living neighbors with valid policies, choose random policy from active IDs
+    # We need a default list of valid policy IDs (1, 2, 3)
+    valid_policy_ids = [1, 2, 3]  # Assuming these are the valid policy IDs
+    
     total_neighbors = sum(policy_counts.values())
     if total_neighbors == 0:
-        return random.randint(0, len(POLICIES) - 1)
+        return random.choice(valid_policy_ids)
     
     # Choose policy proportional to neighbor policies
     policies = list(policy_counts.keys())

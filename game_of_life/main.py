@@ -87,12 +87,13 @@ def parse_arguments() -> Dict[str, Any]:
     # Policy distribution
     policy_group = parser.add_argument_group("Policy Distribution")
     for policy_id, policy in POLICIES.items():
-        policy_group.add_argument(
-            f"--{policy.name.lower().replace(' ', '-')}-ratio",
-            type=float,
-            default=1.0,
-            help=f"Relative ratio of {policy.name} policy (default: 1.0)"
-        )
+        if policy_id != 0:
+            policy_group.add_argument(
+                f"--{policy.name.lower().replace(' ', '-')}-ratio",
+                type=float,
+                default=1.0,
+                help=f"Relative ratio of {policy.name} policy (default: 1.0)"
+            )
     
     # Pattern options
     pattern_group = parser.add_argument_group("Patterns")
@@ -123,6 +124,28 @@ def parse_arguments() -> Dict[str, Any]:
         help="Fill ratio for random initialization (0.0-1.0, default: 0.2)",
     )
 
+    # Max steps
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Maximum number of steps to run before ending simulation (default: unlimited)"
+    )
+
+    # Population tracking
+    parser.add_argument(
+        "--track-population",
+        action="store_true",
+        help="Track and plot population statistics over time"
+    )
+
+    parser.add_argument(
+        "--plot-file",
+        type=str,
+        default=None,
+        help="Save the population plot to this file (requires --track-population)"
+    )
+
     # Parse arguments
     args = parser.parse_args()
     
@@ -149,11 +172,22 @@ def get_policy_counts(args: Dict[str, Any]) -> Dict[int, int]:
     """
     policy_counts = {}
     
-    for policy_id, policy in POLICIES.items():
-        arg_name = f"{policy.name.lower().replace(' ', '-')}_ratio"
-        if arg_name in args:
-            policy_counts[policy_id] = args[arg_name]
+    # Check if any policy weights were explicitly provided
+    any_weights_provided = False
     
+    for policy_id, policy in POLICIES.items():
+        if policy_id != 0:
+            arg_name = f"{policy.name.lower().replace(' ', '-')}_ratio"
+            if arg_name in args and args[arg_name] is not None:
+                policy_counts[policy_id] = args[arg_name]
+                any_weights_provided = True
+    
+    # If no weights were provided, create equal counts
+    if not any_weights_provided:
+        for policy_id in POLICIES:
+            policy_counts[policy_id] = 1.0  # Equal weight
+    
+    print(f"Policy counts from arguments: {policy_counts}")
     return policy_counts
 
 
@@ -168,6 +202,7 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
         A GameOfLife instance initialized according to the arguments
     """
     grid_size = args["grid_size"]
+    max_steps = args["max_steps"]
     
     # Get policy counts for evolutionary dynamics
     policy_counts = get_policy_counts(args)
@@ -177,13 +212,19 @@ def setup_game(args: Dict[str, Any]) -> GameOfLife:
         # Create agent-based game
         game = AgentBasedGameOfLife(
             grid_size=grid_size,
-            random_init=False,
+            random_init=True,
             use_policies=args["use_policies"],
-            policy_counts=policy_counts
+            # policy_counts=policy_counts,
+            random_fill_ratio=args["fill_ratio"],
+            max_steps=max_steps,
         )
     else:
         # Create standard game
-        game = GameOfLife(grid_size=grid_size, random_init=False)
+        game = GameOfLife(
+            grid_size=grid_size, 
+            random_init=False,
+            max_steps=max_steps
+        )
 
     # Add pattern based on arguments
     if args["glider"]:
@@ -212,12 +253,22 @@ def main() -> None:
     # Set up the game
     game = setup_game(args)
 
+    # Enable population tracking if requested
+    if args["track_population"]:
+        print("Enabling population tracking...")
+        game.enable_population_tracking()
+
+    # Print max steps information if set
+    if args["max_steps"]:
+        print(f"Setting maximum steps to {args['max_steps']}")
+
     # Set up the visualizer with explicit arguments
     viz = Visualizer(
         game, 
         update_interval=args["interval"],
         show_agents=args["show_agents"],
-        show_policy_colors=args["show_policy_colors"]
+        show_policy_colors=args["show_policy_colors"],
+        max_steps=args["max_steps"]
     )
 
     # Set title
@@ -247,6 +298,10 @@ def main() -> None:
 
     # Start the animation
     viz.start_animation(save_path=args["save"])
+
+    # Generate population plot if tracking was enabled
+    if args["track_population"] and args["plot_file"]:
+        game.save_population_plot(args["plot_file"])
 
 
 if __name__ == "__main__":

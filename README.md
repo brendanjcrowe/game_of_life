@@ -1,15 +1,6 @@
-# Conway's Game of Life
+# Conway's Game of Life Evolutionary Game Theory Extension
 
-A modular, efficient implementation of Conway's Game of Life in Python, using matrix operations and convolutions for fast computation.
-
-## Features
-
-- Efficient implementation using NumPy arrays and convolutions
-- Modular architecture with separate game logic and visualization components
-- Includes several pre-defined patterns (glider, blinker, block, beacon, Gosper glider gun)
-- Customizable grid size, animation speed, and initial state
-- Support for saving animations
-- **NEW:** Evolutionary game theory dynamics with competing agent policies
+This is a simple extension of Conway's Game of Life to include evolutionary game theory dynamics.
 
 ## Installation
 
@@ -22,6 +13,7 @@ A modular, efficient implementation of Conway's Game of Life in Python, using ma
 2. Install the required dependencies:
    ```bash
    pip install -r requirements.txt
+   pip install -e .
    ```
 
 ## Usage
@@ -103,11 +95,14 @@ When new cells are born, they inherit a policy from their parent cells:
 - `--beacon`: Initialize with a beacon pattern
 - `--block`: Initialize with a block pattern
 
+Note these patterns do not quite work with the agent-based mode.
 ### Examples
+Note this implementation gets a bit slow with a large number of cells.
+I reccomend running it at grid size 25, you can still see the bahavior at this size.
 
 Run with a larger grid and slower animation:
 ```bash
-python -m game_of_life.main --grid-size 200 --interval 800
+python -m game_of_life.main --grid-size 25 --interval 100
 ```
 
 Run with a Gosper Glider Gun pattern:
@@ -146,7 +141,6 @@ The code is organized into four main modules:
 
 ## Extending the Project
 
-To add new patterns, simply add new static methods to the `Patterns` class in `game_logic.py`.
 
 To customize the visualization, modify the `Visualizer` class in `visualization.py`.
 

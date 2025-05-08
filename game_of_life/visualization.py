@@ -32,7 +32,8 @@ class Visualizer:
         cmap: str = "viridis",
         interpolation: str = "nearest",
         show_agents: bool = True,
-        show_policy_colors: bool = True
+        show_policy_colors: bool = True,
+        max_steps: Optional[int] = None
     ):
         """
         Initialize the visualizer.
@@ -44,6 +45,7 @@ class Visualizer:
             interpolation: Interpolation method for displaying the grid
             show_agents: Whether to show agent visualizations (for AgentBasedGameOfLife)
             show_policy_colors: Whether to show different colors for different policies
+            max_steps: Maximum number of steps to run (None for unlimited)
         """
         self.game = game
         self.update_interval = update_interval
@@ -51,6 +53,8 @@ class Visualizer:
         self.interpolation = interpolation
         self.show_agents = show_agents and isinstance(game, AgentBasedGameOfLife)
         self.show_policy_colors = show_policy_colors and isinstance(game, AgentBasedGameOfLife)
+        self.max_steps = max_steps
+        self.step_count = 0
 
         # Initialize the figure and axes
         self.fig, self.ax = plt.subplots(figsize=(10, 10))  # Increased figure size
@@ -118,9 +122,10 @@ class Visualizer:
         
         # Add a legend entry for each policy
         for policy_id, policy in POLICIES.items():
-            patch = Rectangle((0, 0), 1, 1, color=policy.color, alpha=0.7)
-            handles.append(patch)
-            labels.append(policy.name)
+            if policy_id != 0:
+                patch = Rectangle((0, 0), 1, 1, color=policy.color, alpha=0.7)
+                handles.append(patch)
+                labels.append(policy.name)
         
         # Add the legend to the plot
         self.ax.legend(
@@ -160,7 +165,7 @@ class Visualizer:
         if self.show_policy_colors and hasattr(agent_game, 'use_policies') and agent_game.use_policies:
             for row, col in np.argwhere(agent_game.grid == ON):
                 policy_id = agent_game.get_policy_id(row, col)
-                if policy_id is not None:
+                if policy_id != 0:
                     policy = get_policy_by_id(policy_id)
                     rect = Rectangle(
                         (col - 0.5, row - 0.5),
@@ -204,16 +209,25 @@ class Visualizer:
     def update_frame(self, frame_num) -> Tuple:
         """
         Update function for animation.
-
-        Args:
-            frame_num: Current frame number
-
-        Returns:
-            The updated image
         """
-        # Update the game state
-        self.game.update()
-
+        # Check if the game itself has completed (e.g., reached max steps)
+        if hasattr(self.game, 'is_simulation_complete') and self.game.is_simulation_complete():
+            plt.close(self.fig)
+            return (self.img,)
+        
+        # Check our own max_steps condition
+        if self.max_steps is not None and self.step_count >= self.max_steps:
+            plt.close(self.fig)
+            return (self.img,)
+        
+        # Update the game state - this might return False if game is complete
+        continue_simulation = self.game.update()
+        if not continue_simulation:
+            plt.close(self.fig)
+            return (self.img,)
+        
+        self.step_count += 1
+        
         # Update the display
         if isinstance(self.game, AgentBasedGameOfLife):
             # Update agent-based visualization
@@ -238,6 +252,12 @@ class Visualizer:
             # Standard visualization
             self.img.set_data(self.game.grid)
             
+        # Update the title with step count
+        if self.max_steps:
+            self.ax.set_title(f"{self.title} - Step {self.step_count}/{self.max_steps}")
+        else:
+            self.ax.set_title(f"{self.title} - Step {self.step_count}")
+        
         return (self.img,)
 
     def start_animation(
@@ -250,9 +270,12 @@ class Visualizer:
             frames: Number of frames to run (None for infinite)
             save_path: Path to save the animation to (None to not save)
         """
-        # Set up animation with a finite number of frames if saving
+        # Set up animation with a finite number of frames
         if save_path:
-            frames = 100  # Use a reasonable number of frames for saving
+            # If saving, use a reasonable default number of frames
+            frames = 100 if self.max_steps is None else min(100, self.max_steps)
+        elif self.max_steps is not None:
+            frames = self.max_steps  # Use max_steps as frames limit if specified
             
         self.animation = animation.FuncAnimation(
             self.fig,
